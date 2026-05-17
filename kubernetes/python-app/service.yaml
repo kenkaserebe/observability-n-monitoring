@@ -1,0 +1,16 @@
+# observability-n-monitoring/kubernetes/python-app/service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-app
+  namespace: monitoring
+  labels:
+    app: observability-app
+spec:
+  selector:
+    app: observability-app
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http

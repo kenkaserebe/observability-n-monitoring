@@ -1,0 +1,18 @@
+# observability-n-monitoring/kubernetes/observability/monitoring-values.yaml
+
+---
+# kube-prometheus-stack Helm Values
+grafana:
+  ingress:
+    enabled: true
+    hosts:
+      - grafana.lan
+  adminPassword: prom-operator
+
+prometheus:
+  prometheusSpec:
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelector:
+      matchLabels:
+        releases: monitoring
+    retention: 10d

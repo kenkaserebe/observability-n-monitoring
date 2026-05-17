@@ -1,0 +1,90 @@
+# observability-n-monitoring/ansible/playbooks/04_install_metallb.yaml
+
+---
+- name: Install MetalLB for bare-metal LoadBalancer
+  hosts: localhost
+  gather_facts: true
+  connection: local
+
+  vars:
+    metallb_namespace: metallb-system
+
+  tasks:
+    # ------------------ Install MetalLB ---------------------
+    - name: Apply MetalLB native manifests
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('url', 'https://raw.githubusercontent.com/metallb/metallb/' + metallb_version + '/config/manifests/metallb-native.yaml', split_lines=False) | from_yaml_all | list }}"
+
+    - name: Wait for MetalLB controller to be ready
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        name: controller
+        namespace: "{{ metallb_namespace }}"
+      register: controller_deployment
+      retries: 15
+      delay: 10
+      until:
+        - controller_deployment.resources is defined
+        - controller_deployment.resources | length > 0
+        - controller_deployment.resources[0].status.readyReplicas is defined
+        - controller_deployment.resources[0].status.readyReplicas == 1
+
+    - name: Wait for MetalLB speakers to be ready
+      kubernetes.core.k8s_info:
+        kind: DaemonSet
+        name: speaker
+        namespace: "{{ metallb_namespace }}"
+      register: speaker_daemonset
+      retries: 15
+      delay: 10
+      until:
+        - speaker_daemonset.resources is defined
+        - speaker_daemonset.resources | length > 0
+        - speaker_daemonset.resources[0].status.numberReady is defined
+        - speaker_daemonset.resources[0].status.numberReady | int == speaker_daemonset.resources[0].status.desiredNumberScheduled | int
+
+    # ------------------- Configure IP Pool -----------------------
+    - name: Create IPAddressPool
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: local-pool
+            namespace: "{{ metallb_namespace }}"
+          spec:
+            addresses:
+              - "{{ metallb_ip_pool | join(',') }}"
+
+    - name: Create L2Advertisement
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: local-l2
+            namespace: "{{ metallb_namespace }}"
+          spec:
+            ipAddressPools:
+              - local-pool
+
+    # ------------------------- Verify Traefik gets LoadBalancer IP ---------------------
+    - name: Wait for Traefik to receive LoadBalancer IP
+      kubernetes.core.k8s_info:
+        kind: Service
+        name: traefik
+        namespace: kube-system
+      register: traefik_svc
+      retries: 15
+      delay: 10
+      until:
+        - traefik_svc.resources is defined
+        - traefik_svc.resources[0].status.loadBalancer.ingress is defined
+        - traefik_svc.resources[0].status.loadBalancer.ingress | length > 0
+
+    - name: Display Traefik LoadBalancer IP
+      ansible.builtin.debug:
+        msg: "Traefik LoadBalancer IP: {{ traefik_svc.resources[0].status.loadBalancer.ingress[0].ip }}"

@@ -1,0 +1,7 @@
+# observability-n-monitoring/ansible/inventory/production/group_vars/k3s_agent.yaml
+
+---
+# K3s agent-specific configuration
+k3s_node_labels:
+  - "arch=amd64"
+  - "node.kubernetes.io/instance-type=laptop"

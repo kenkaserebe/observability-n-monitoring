@@ -1,0 +1,6 @@
+# observability-n-monitoring/ansible/inventory/production/group_vars/k3s_server.yaml
+
+---
+# K3s server-specific configuration
+k3s_extra_server_args: "--disable servicelb"
+k3s_primary_server_ip: "{{ hostvars[groups['k3s_server'][0]]['ansible_host'] }}"

@@ -1,0 +1,77 @@
+# observability-n-monitoring/ansible/playbooks/site.yaml
+
+---
+# =============================================================
+# site.yaml - Master Playbook
+# Complete deployment of K3s cluster + Observability stack
+# =============================================================
+# Run: ansible-playbook playbooks/site.yaml --ask-become-pass
+#
+# Run specific sections:
+# Only prepare nodes
+# ansible-playbook playbooks/site.yaml --tags prepare --ask-become-pass
+#
+# Skip specific sections:
+# Run everything except ArgoCD
+# ansible-playbook playbooks/site.yaml --skip-tags app --ask-become-pass
+#
+# To run specific sections only, use tags:
+#   --tags prepare          : OS preparation only
+#   --tags k3s              : K3s cluster only
+#   --tags metallb          : MetalLB only
+#   --tags observability    : Monitoring stack only
+#   --tags app              : ArgoCD + Python app only
+# =============================================================
+
+- name: 00 - Verify all nodes are reachable
+  ansible.builtin.import_playbook: 00_ping_test.yaml
+  tags: [ping, all]
+
+- name: 01 - Prepare all nodes for K3s
+  ansible.builtin.import_playbook: 01_prepare_nodes.yaml
+  tags: [prepare, all]
+
+- name: 02 - Install K3s HA control plane
+  ansible.builtin.import_playbook: 02_install_k3s_server.yaml
+  tags: [k3s, servers, all]
+
+- name: 03 - Join K3s worker nodes
+  ansible.builtin.import_playbook: 03_install_k3s_agent.yaml
+  tags: [k3s, agents, all]
+
+- name: 04 - Install MetalLB for bare-metal LoadBalancer
+  ansible.builtin.import_playbook: 04_install_metallb.yaml
+  tags: [metallb, all]
+
+- name: 05 - Deploy observability stack
+  ansible.builtin.import_playbook: 05_deploy_observability.yaml
+  tags: [observability, all]
+
+- name: 06 - Deploy ArgoCD and Python app (GitOps)
+  ansible.builtin.import_playbook: 06_deploy_argocd_&_configure_python_app_gitops.yaml
+  tags: [app, argocd, all]
+
+
+# Execution Flow
+#   00_ping_test
+#    │
+#    V
+# 01_prepare_nodes       ← All 5 nodes (OS, firewall, swap, sleep)
+#    │
+#    V
+# 02_install_k3s_server  ← controller1, controller2, controller3
+#    │
+#    V
+# 03_install_k3s_agent   ← laptop-worker-1, laptop-worker-2
+#    │
+#    V
+# 04_install_metallb     ← localhost (MetalLB + IP pool)
+#    │
+#    V
+# 05_deploy_observability ← localhost (Prometheus, Grafana, Loki, Ingress)
+#    │
+#    V
+# 06_deploy_argocd_app   ← localhost (ArgoCD + Python app GitOps)
+#    │
+#    V
+# Cluster ready!

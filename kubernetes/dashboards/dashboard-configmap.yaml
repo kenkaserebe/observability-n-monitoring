@@ -1,0 +1,33 @@
+# observability-n-monitoring/kubernetes/dashboards/dashboard-configmap.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ item.name }}"
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  "{{ item.name }}.json": "{{ lookup('file', item.path) }}"
+loop:
+    - { name: "dashboard-python-observability-app", path: "kubernetes/dashboards/dashboard-python-observability-app.json" }
+    - { name: "kubernetes-cluster-overview", path: "kubernetes/dashboards/kubernetes-cluster-overview.json" }
+    - { name: "alertmanager-overview", path: "kubernetes/dashboards/alertmanager-overview.json" }
+    - { name: "coreDNS", path: "kubernetes/dashboards/coreDNS.json" }
+    - { name: "grafana-overview", path: "kubernetes/dashboards/grafana-overview.json" }
+    - { name: "kubernetes-api-server", path: "kubernetes/dashboards/kubernetes-api-server.json" }
+    - { name: "kubernetes-compute-resources-cluster", path: "kubernetes/dashboards/kubernetes-compute-resources-cluster.json" }
+    - { name: "kubernetes-compute-resources-multi-cluster.json", path: "kubernetes/dashboards/kubernetes-compute-resources-multi-cluster.json" }
+    - { name: "kubernetes-compute-resources-node-pods", path: "kubernetes/dashboards/kubernetes-compute-resources-node-pods.json" }
+    - { name: "kubernetes-kubelet", path: "kubernetes/dashboards/kubernetes-kubelet.json" }
+    - { name: "kubernetes-networking-cluster", path: "kubernetes/dashboards/kubernetes-networking-cluster.json" }
+    - { name: "kubernetes-networking-namespace-pods", path: "kubernetes/dashboards/kubernetes-networking-namespace-pods.json" }
+    - { name: "kubernetes-networking-namespace-workload", path: "kubernetes/dashboards/kubernetes-networking-namespace-workload.json" }
+    - { name: "kubernetes-networking-pod", path: "kubernetes/dashboards/kubernetes-networking-pod.json" }
+    - { name: "kubernetes-networking-workload", path: "kubernetes/dashboards/kubernetes-networking-workload.json" }
+    - { name: "kubernetes-persistent-volumes", path: "kubernetes/dashboards/kubernetes-persistent-volumes.json" }
+    - { name: "node-exporter-AIX", path: "kubernetes/dashboards/node-exporter-AIX.json" }
+    - { name: "node-exporter-nodes", path: "kubernetes/dashboards/node-exporter-nodes.json" }
+    - { name: "node-exporter-use-method-cluster", path: "kubernetes/dashboards/node-exporter-use-method-cluster.json" }
+    - { name: "node-exporter-use-method-node", path: "kubernetes/dashboards/node-exporter-use-method-node.json" }
+    - { name: "prometheus-overview", path: "kubernetes/dashboards/prometheus-overview.json" }

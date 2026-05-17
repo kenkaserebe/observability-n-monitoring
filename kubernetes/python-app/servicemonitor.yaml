@@ -1,0 +1,17 @@
+# observability-n-monitoring/kubernetes/python-app/servicemonitor.yaml
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: observability-app
+  namespace: monitoring   # same namespace as Prometheus
+  labels:
+    release: monitoring   # must match the label selector of the Prometheus operator
+spec:
+  selector:
+    matchLabels:
+      app: observability-app
+  endpoints:
+  - port: http
+    interval: 15s
+    path: /metrics

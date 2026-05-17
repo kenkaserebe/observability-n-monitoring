@@ -1,0 +1,224 @@
+# observability-n-monitoring/ansible/playbooks/05_deploy_observability.yaml
+
+---
+- name: Deploy observability stack (Prometheus, Grafana, Loki, Ingress)
+  hosts: localhost
+  gather_facts: true
+  connection: local
+
+  vars:
+    monitoring_namespace: monitoring
+    logging_namespace: logging
+    helm_repos:
+      - name: prometheus-community
+        url: https://prometheus-community.github.io/helm-charts
+      - name: grafana
+        url: https://grafana.github.io/helm-charts
+
+  tasks:
+    # ------------------- Add Helm Repos -------------------------
+    - name: Add Helm repositories
+      kubernetes.core.helm_repository:
+        name: "{{ item.name }}"
+        repo_url: "{{ item.url }}"
+      loop: "{{ helm_repos }}"
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+      changed_when: false
+
+    # --------------------- Create Namespaces ------------------------
+    - name: Create monitoring namespace
+      kubernetes.core.k8s:
+        kind: Namespace
+        name: "{{ monitoring_namespace }}"
+        state: present
+
+    - name: Create logging namespace
+      kubernetes.core.k8s:
+        kind: Namespace
+        name: "{{ logging_namespace }}"
+        state: present
+
+    # ---------------- Deploy kube-prometheus-stack --------------------
+    - name: Deploy kube-prometheus-stack
+      kubernetes.core.helm:
+        name: monitoring
+        chart_ref: prometheus-community/kube-prometheus-stack
+        chart_version: "84.4.0"
+        release_namespace: "{{ monitoring_namespace }}"
+        state: present
+        values:
+          grafana:
+            ingress:
+              enabled: true
+              hosts:
+                - grafana.lan
+            adminPassword: prom-operator
+          prometheus:
+            prometheusSpec:
+              serviceMonitornamespaceSelector: {}
+              serviceMonitorSelector:
+                matchLabels:
+                  release: monitoring
+              retention: 10d
+
+    - name: Wait for Prometheus pods to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ monitoring_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/name=prometheus"
+      register: prometheus_pods
+      retries: 20
+      delay: 15
+      until:
+        - prometheus_pods.resources | length > 0
+        - prometheus_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length == prometheus_pods.resources | length
+
+    - name: Wait for Grafana pods to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ monitoring_namespace }}"
+      register: grafana_pods
+      retries: 20
+      delay: 15
+      until:
+        - grafana_pods.resources | length > 0
+        - grafana_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length == grafana_pods.resources | length
+
+    # ------------------------ Deploy Loki Stack -------------------------------------
+    - name: Deploy Loki stack
+      kubernetes.core.helm:
+        name: loki
+        chart_ref: grafana/loki-stack
+        chart_version: "2.10.3"
+        release_namespace: "{{ logging_namespace }}"
+        state: present
+        values:
+          fluent-bit:
+            enabled: false
+          promtail:
+            enabled: true
+          loki:
+            persistence:
+              enabled: true
+              size: 5Gi
+              storageClassName: local-path
+
+    - name: Wait for Loki pods to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ logging_namespace }}"
+        label_selectors:
+          - "app=loki"
+      register: loki_pods
+      retries: 20
+      delay: 15
+      until:
+        - loki_pods.resources | length > 0
+        - loki_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length == loki_pods.resources | length
+
+    - name: Wait for Promtail pods to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ logging_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/name=promtail"
+      register: promtail_pods
+      retries: 20
+      delay: 15
+      until:
+        - promtail_pods.resources | length > 0
+        - promtail_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length == promtail_pods.resources | length
+
+    # -------------------- Create Ingress for Prometheus and Alertmanager ----------------------
+    - name: Create monitoring Ingress
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: monitoring-ingress
+            namespace: "{{ monitoring_namespace }}"
+            annotations:
+              traefik.ingress.kubernetes.io/router.entrypoints: web
+          spec:
+            rules:
+              - host: prometheus.lan
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: monitoring-kube-prometheus-prometheus
+                          port:
+                            number: 9090
+              - host: alertmanager.lan
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: alertmanager-operated
+                          port:
+                            number: 9093
+
+    # ---------------- Add Loki Datasource to Grafana -----------------------
+    - name: Add Loki datasource ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: loki-datasource
+            namespace: "{{ monitoring_namespace }}"
+            labels:
+              grafana_datasource: "1"
+          data:
+            loki-datasource.yaml: |
+              apiVersion: 1
+              datasources:
+                - name: Loki
+                  type: loki
+                  access: proxy
+                  url: http://loki.{{ logging_namespace }}.svc.cluster.local:3100
+                  isDefault: false
+                  version: 1
+                  editable: true
+
+    # -------------------- Import Custom Dashboards ------------------------
+    - name: Find dashboard JSON files
+      ansible.builtin.find:
+        paths: "{{ playbook_dir }}/../kubernetes/dashboards"
+        patterns: "*.json"
+      register: dashboard_files
+
+    - name: Import Grafana dashboards
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "dashboard-{{ item.path | basename | splitext | first | regex_replace('_', '-') }}"
+            namespace: "{{ monitoring_namespace }}"
+            labels:
+              grafana_dashboard: "1"
+          data:
+            "{{ item.path | basename }}": "{{ lookup('file', item.path) }}"
+      loop: "{{ dashboard_files.files }}"
+      when: dashboard_files.files | length > 0
+
+    # ----------------- Final Verification ------------------------------
+    - name: Display access URLs
+      ansible.builtin.debug:
+        msg:
+          - "Grafana:       http://grafana.lan (admin / prom-operator)"
+          - "Prometheus:    http://prometheus.lan"
+          - "Alertmanager:  http://alertmanager.lan"
+          - "Add these to /etc/hosts: 192.168.1.15 grafana.lan prometheus.lan alertmanager.lan"

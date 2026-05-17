@@ -1,0 +1,10 @@
+# observability-n-monitoring/ansible/playbooks/00_ping_test.yaml
+
+---
+- name: Verify all nodes are reachable
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ping test
+      ansible.builtin.ping:
+        

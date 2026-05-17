@@ -1,0 +1,67 @@
+# observability-n-monitoring/ansible/playbooks/03_install_k3s_agent.yml
+
+---
+- name: Join K3s agents to the cluster
+  hosts: k3s_agent
+  gather_facts: true
+
+  vars:
+    agent_token_path: "{{ playbook_dir }}/.k3s_agent_token"
+    primary_server_url: "https://{{ k3s_primary_server_ip }}:6443"
+
+  tasks:
+    # ------------------ Clean stale K3s data ---------------------
+    - name: Stop k3s service if running
+      ansible.builtin.systemd:
+        name: k3s-agent
+        state: stopped
+      ignore_errors: true
+
+    - name: Remove stale K3s data director
+      ansible.builtin.file:
+        path: /var/lib/rancher/k3s
+        state: absent
+
+    # -------------------- Join Cluster ----------------------------
+    - name: Join K3s agent to cluster
+      ansible.builtin.shell:
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - server \
+          --server {{ primary_server_url }} \
+          --token {{ lookup('file', agent_token_path) | trim }} \
+      register: join_result
+      changed_when: "'systemd service k3s started' in join_result.stdout"
+      become: false
+
+    - name: Wait for k3s service to be active
+      ansible.builtin.systemd:
+        name: k3s-agent
+        state: started
+        enabled: yes
+      retries: 12
+      delay: 10
+
+    # ---------------------- Verify node is Ready --------------------
+    - name: Verify node joined and is Ready
+      ansible.builtin.command:
+        kubectl get nodes {{ inventory_hostname }}
+      register: node_status
+      changed_when: false
+      retries: 12
+      delay: 10
+      until: node_status.stdout is search(' Ready ')
+      delegate_to: "{{ groups['k3s_server'][0] }}"
+
+    # ---------------------- Label workers ----------------------------
+    - name: Label worker nodes with arch=amd64
+      ansible.builtin.command: >
+        kubectl label node {{ inventory_hostname }}
+        arch=amd64 --overwrite
+      changed_when: false
+      delegate_to: "{{ groups['k3s_server'][0] }}"
+
+    - name: Label worker nodes with node type
+      ansible.builtin.command: >
+        kubectl label node {{ inventory_hostname }}
+        node.kubernetes.io/instance-type=laptop --overwrite
+      changed_when: false
+      delegate_to: "{{ groups['k3s_server'][0] }}"

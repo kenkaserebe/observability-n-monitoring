@@ -1,0 +1,37 @@
+# observability-n-monitoring/kubernetes/python-app/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observability-app
+  namespace: monitoring          # you can change
+  labels:
+    app: observability-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: observability-app
+  template:
+    metadata:
+      labels:
+        app: observability-app
+    spec:
+      containers:
+      - name: app
+        image: ken0k/observability-app-updated-metrics:v4
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+      # Pin to x86 workers if desired, else leave out
+      nodeSelector:
+        arch: amd64

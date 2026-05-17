@@ -1,0 +1,23 @@
+# observability-n-monitoring/kubernetes/python-app/alertmanagerconfig.yaml
+
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: default-receiver
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  route:
+    groupBy: ['alertname']
+    groupWait: 10s
+    groupInterval: 10s
+    repeatInterval: 1h
+    receiver: 'webhook-receiver'
+  receivers:
+    - name: 'webhook-receiver'
+      webhookConfigs:
+        - url: 'https://webhook.site/YOUR-UNIQUE-ID'
+          sendResolved: true
+
+          # Replace YOUR-UNIQUE-ID with your actual webhook.site ID. https://webhook.site/#!/view/b8a2875c-3131-495a-ba52-6fd903581d4c

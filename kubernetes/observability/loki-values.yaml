@@ -1,0 +1,15 @@
+# oring/kubernetes/observability/loki-values.yaml
+
+---
+# Loki stack Helm values
+fluent-bit:
+  enabled: false
+
+promtail:
+  enabled: true
+
+loki:
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClassName: local-path

@@ -1,0 +1,156 @@
+# observability-n-monitoring/ansible/playbooks/02_install_k3s_server.yaml
+
+---
+- name: Bootstrap first K3s server (HA with embedded etcd)
+  hosts: k3s_server[0]              # controller1
+  become: true
+  gather_facts: true
+
+  vars:
+    k3s_token: "{{ lookup('password', '/dev/null length=48 chars=ascii_letters,digits') }}"
+    token_path: "{{ playbook_dir }}/.k3s_token"
+
+  tasks:
+    # -------------------- Token Management ---------------------
+    - name: Slurp existing token if present
+      ansible.builtin.slurp:
+        src: "{{ token_path }}"
+      register: existing_token
+      delegate_to: localhost
+      run_once: true
+      ignore_errors: true
+      become: false
+
+    - name: Set k3s_token from existing file or generate a new one
+      ansible.builtin.set_fact:
+        k3s_token: >-
+          {{ existing_token['content'] | b64decode | trim
+              if (existing_token is succeeded and existing_token.content is defined and existing_token.content | length > 0)
+              else lookup('password', '/dev/null length=48 chars=ascii_letters,digits') }}
+
+    - name: Write token to file if new
+      ansible.builtin.copy:
+        content: "{{ k3s_token }}"
+        dest: "{{ token_path }}"
+        mode: '0600'
+      delegate_to: localhost
+      run_once: true
+      when: existing_token is failed or existing_token.content | default('') | length == 0
+      become: false
+
+    # ------------------ Clean stale K3s data ---------------------
+    - name: Stop k3s service if running
+      ansible.builtin.systemd:
+        name: k3s
+        state: stopped
+      ignore_errors: true
+
+    - name: Remove stale K3s data director
+      ansible.builtin.file:
+        path: /var/lib/rancher/k3s
+        state: absent
+
+    - name: Install K3s server with cluster-init
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - server \
+          --cluster-init \
+          --token {{ k3s_token }} \
+          --disable servicelb \
+          --write-kubeconfig-mode 644
+      register: install_result
+      changed_when: "'systemd service k3s started' in install_result.stdout"
+
+    - name: Wait for k3s service to be active
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+        enabled: yes
+      retries: 12
+      delay: 10
+
+    - name: Verify node is ready
+      ansible.builtin.command: kubectl get nodes {{ inventory_hostname }}
+      register: nodes
+      changed_when: false
+      retries: 10
+      delay: 5
+      until: "' Ready ' in nodes.stdout"
+
+    # ------------------- Retrieve tokens for joining other nodes ---------------------
+    - name: Fetch server node token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/token
+      register: server_node_token
+
+    - name: Store server node token locally
+      ansible.builtin.copy:
+        content: "{{ server_node_token['content'] | b64decode | trim }}"
+        dest: "{{ playbook_dir }}/.k3s_server_token"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+
+    - name: Fetch agent node token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/agent-token
+      register: agent_node_token
+
+    - name: Store agent node token locally
+      ansible.builtin.copy:
+        content: "{{ agent_node_token['content'] | b64decode | trim }}"
+        dest: "{{ playbook_dir }}/.k3s_agent_token"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+
+
+- name: Join additional K3s servers (HA peers)
+  hosts: k3s_server[1:]               # controller2, controller3
+  become: true
+  gather_facts: true
+
+  vars:
+    primary_server_url: "https://{{ k3s_primary_server_ip }}:6443"
+    server_token_path: "{{ playbook_dir }}/.k3s_server_token"
+
+  tasks:
+    # ------------------ Clean stale K3s data ---------------------
+    - name: Stop k3s service if running
+      ansible.builtin.systemd:
+        name: k3s
+        state: stopped
+      ignore_errors: true
+
+    - name: Remove stale K3s data director
+      ansible.builtin.file:
+        path: /var/lib/rancher/k3s
+        state: absent
+
+    # -------------------- Join Cluster ----------------------------
+    - name: Join K3s server to cluster
+      ansible.builtin.shell:
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - server \
+          --server {{ primary_server_url }} \
+          --token {{ lookup('file', server_token_path) | trim }} \
+          --disable servicelb \
+          --write-kubeconfig-mode 644
+      register: join_result
+      changed_when: "'systemd service k3s started' in join_result.stdout"
+      become: false
+
+    - name: Wait for k3s service to be active
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+        enabled: yes
+      retries: 12
+      delay: 10
+
+    - name: Verify the new node joined
+      ansible.builtin.command: kubectl get nodes {{ inventory_hostname }}
+      register: nodes
+      changed_when: false
+      retries: 10
+      delay: 5
+      until: "' Ready ' in nodes.stdout"
+      delegate_to: "{{ groups['k3s_server'][0] }}"
