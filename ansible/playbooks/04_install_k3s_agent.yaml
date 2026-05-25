@@ -1,4 +1,4 @@
-# observability-n-monitoring/ansible/playbooks/03_install_k3s_agent.yml
+# observability-n-monitoring/ansible/playbooks/04_install_k3s_agent.yml
 
 ---
 - name: Join K3s agents to the cluster

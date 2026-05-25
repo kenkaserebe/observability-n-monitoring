@@ -1,4 +1,4 @@
-# observability-n-monitoring/ansible/playbooks/05_deploy_observability.yaml
+# observability-n-monitoring/ansible/playbooks/06_deploy_observability.yaml
 
 ---
 - name: Deploy observability stack (Prometheus, Grafana, Loki, Ingress)

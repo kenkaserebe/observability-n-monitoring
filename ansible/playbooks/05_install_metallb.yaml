@@ -1,4 +1,4 @@
-# observability-n-monitoring/ansible/playbooks/04_install_metallb.yaml
+# observability-n-monitoring/ansible/playbooks/05_install_metallb.yaml
 
 ---
 - name: Install MetalLB for bare-metal LoadBalancer

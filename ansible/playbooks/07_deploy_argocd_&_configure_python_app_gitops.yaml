@@ -1,4 +1,4 @@
-# observability-n-monitoring/ansible/playbooks/06_deploy_argocd_&_configure_python_app_gitops.yaml
+# observability-n-monitoring/ansible/playbooks/07_deploy_argocd_&_configure_python_app_gitops.yaml
 
 ---
 - name: Deploy ArgoCD and configure Python app GitOps
@@ -58,63 +58,24 @@
         - argocd_server_pod.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
         - (argocd_server_pod.resources | first).status.containerStatuses | selectattr('ready', 'equalto', true) | list | length > 0 
 
-    # ---------------- Get ArgoCD Admin Password ----------------------
-    - name: Get ArgoCD initial admin password
-      kubernetes.core.k8s_info:
-        kind: Secret
-        name: argocd-initial-admin-secret
-        namespace: "{{ argocd_namespace }}"
-      register: admin_secret
-
-    - name: Set admin password fact
-      ansible.builtin.set_fact:
-        argocd_admin_password: "{{ admin_secret.resources[0].data.password | b64decode }}"
-
-    - name: Display ArgoCD access info
-      ansible.builtin.debug:
-        msg:
-          - "ArgoCD URL: https://argocd.lan (after Ingress is configured)"
-          - "ArgoCD Admin Password: {{ argocd_admin_password }}"
-          - "Get CLI password via: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
-
-    # -------------- Create ArgoCD Ingress -----------------------------
-    - name: Create ArgoCD Ingress
+    # ------------- Configure ArgoCD for HTTP/Insecure Mode -----------
+    - name: Configure ArgoCD for insecure HTTP mode
       kubernetes.core.k8s:
         state: present
         definition:
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
+          apiVersion: v1
+          kind: ConfigMap
           metadata:
-            name: argocd-server
+            name: argocd-cmd-params-cm
             namespace: "{{ argocd_namespace }}"
-            annotations:
-              traefik.ingress.kubernetes.io/router.entrypoints: web
-              traefik.ingress.kubernetes.io/router.middlewares: "{{ argocd_namespace }}-redirect@kubernetescrd"
-          spec:
-            rules:
-              - host: argocd.lan
-                http:
-                  paths:
-                    - path: /
-                      pathType: Prefix
-                      backend:
-                        service:
-                          name: argocd-server
-                          port:
-                            number: 80
-
-    - name: Debug playbook_dir path
-      ansible.builtin.debug:
-        msg:
-          - "playbook_dir: {{ playbook_dir }}"
-          - "expected file: {{ playbook_dir + '/../kubernetes/argocd/argocd-insecure-configmap.yaml' }}"
-      delegate_to: localhost
-
-    # ---------------- Patch ArgoCD to work with HTTP (Local Lab) -------------------------
-    - name: Disable ArgoCD HTTPS redirect for local HTTP access
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', playbook_dir + '/../../kubernetes/argocd/argocd-insecure-configmap.yaml') | from_yaml }}" 
+            labels:
+              app.kubernetes.io/name: argocd-cmd-params-cm
+              app.kubernetes.io/part-of: argocd
+          data:
+            # Enable HTTP (insecure) mode
+            server.insecure: "true"
+            # Optional: Disable TLS since we are using HTTP
+            server.disable.tls: "true"
 
     - name: Restart ArgoCD server to apply insecure setting
       kubernetes.core.k8s:
@@ -143,49 +104,69 @@
         - argocd_restart_pod.resources[0].status.phase == "Running"
         - argocd_restart_pod.resources[0].status.containerStatuses[0].ready == true
 
-    # # ------------------- Install ArgoCD CLI (optional) --------------------
-    # - name: Create ~/.local/bin directory if it does not exist
-    #   ansible.builtin.file:
-    #     path: "{{ lookup('env', 'HOME') }}/.local/bin"
-    #     state: directory
-    #     mode: '0755'
-    #   become: false
-    # - name: Download ArgoCD CLI
-    #   ansible.builtin.get_url:
-    #     url: https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-    #     dest: "{{ lookup('env', 'HOME') }}/.local/bin/argocd"
-    #     mode: '0755'
-    #   become: false
 
-    # - name: Check if argocd CLI is installed
-    #   ansible.builtin.command: which argocd
-    #   register: argocd_cli_check
-    #   ignore_errors: true
-    #   changed_when: false
+    # ---------------- Get ArgoCD Admin Password ----------------------
+    - name: Get ArgoCD initial admin password
+      kubernetes.core.k8s_info:
+        kind: Secret
+        name: argocd-initial-admin-secret
+        namespace: "{{ argocd_namespace }}"
+      register: admin_secret
 
-    # - name: Install ArgoCD CLI
-    #   ansible.builtin.shell: |
-    #     curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-    #     chmod +x {{ lookup('env', 'HOME') }}/.local/bin/argocd #argocd
-    #     sudo mv argocd /usr/local/bin/
-    #   when: argocd_cli_check.rc != 0
-    #   changed_when: false
+    - name: Set admin password fact
+      ansible.builtin.set_fact:
+        argocd_admin_password: "{{ admin_secret.resources[0].data.password | b64decode }}"
 
-    # - name: Ensure ~/.local/bin is in PATH
-    #   ansible.builtin.lineinfile:
-    #     path: "{{ lookup('env', 'HOME') }}.bashrc"
-    #     line: 'export PATH="$HOME/.local/bin:$PATH"'
-    #     state: present
-    #   become: false
-    #   when: argocd_cli_check.rc != 0
+    # -------------- Create ArgoCD Ingress -----------------------------
+    - name: Create ArgoCD Ingress
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: argocd-server
+            namespace: "{{ argocd_namespace }}"
+            annotations:
+              traefik.ingress.kubernetes.io/router.entrypoints: web
+              traefik.ingress.kubernetes.io/router.middlewares: "{{ argocd_namespace }}-redirect@kubernetescrd"
+          spec:
+            rules:
+              - host: argocd.lan
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: argocd-server
+                          port:
+                            number: 80    # Use 80 for HTTP when insecure mode is enabled
 
-    # # -------------------------------- Login to ArgoCD --------------------------------
-    # - name: Login to ArgoCD CLI
-    #   ansible.builtin.shell: |
-    #     argocd login argocd.lan --username admin --password {{ argocd_admin_password }} --insecure
-    #   become: false
-    #   changed_when: false
-    #   ignore_errors: true
+    # ----------------- Create App Ingress ------------------------------
+    - name: Create observability app ingress
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: observability-app-ingress
+            namespace: "{{ argocd_namespace }}"
+            annotations:
+              traefik.ingress.kubernetes.io/router.entrypoints: web
+          spec:
+            rules:
+              - host: app.lan
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: observability-app
+                          port:
+                            number: 8000
 
     # -------------------------- Create ArgoCD Application for Python App --------------------
     - name: Create ArgoCD Application for Python app
@@ -232,6 +213,27 @@
       delay: 10
       until: health_status.stdout in ["Healthy", "Degraded", "Progressing"]  # == "Healthy"
 
+    # ---------------------- Verify Endpoints ----------------------------
+    - name: Wait for ArgoCD endpoint to be ready
+      ansible.builtin.uri:
+        url: http://argocd.lan
+        status_code: 200
+      register: argocd_response
+      retries: 30
+      delay: 40
+      until: argocd_response.status == 200
+      ignore_errors: true
+
+    - name: Wait for app endpoint to be ready
+      ansible.builtin.uri:
+        url: http://app.lan
+        status_code: 200
+      register: app_response
+      retries: 30
+      delay: 40
+      until: app_response.status == 200
+      ignore_errors: true
+
     # ---------------------- Final Output --------------------------------
     - name: Display deployment summary
       ansible.builtin.debug:
@@ -241,9 +243,14 @@
           - "------------------------------------------------------------"
           - "ArgoCD URL:          http://argocd.lan"
           - "Admin Username:      admin"
-          - "Admin Password:      {{ argocd_admin_password }}"
+          - "Admin Password:      {{ argocd_admin_password if argocd_admin_password is defined else 'Check secret: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d' }}"
           - ""
           - "Python App URL:      http://app.lan"
           - "------------------------------------------------------------"
           - "Add to /etc/hosts: 192.168.1.15 argocd.lan app.lan"
           - "============================================================"
+          - "Quick commands:"
+          - " # Check application status"
+          - " kubectl get application -n {{ argocd_namespace }}"
+          - " kubectl get pods -n {{ app_namespace }}"
+          - "============================================================="
