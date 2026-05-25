@@ -26,6 +26,14 @@
         name: "{{ essential_packages }}"
         state: present
 
+    # # ------------- Passwordless Sudo -------------
+    # - name: Enable passwordless sudo for ansible user
+    #   ansible.builtin.copy:
+    #     content: "{{ ansible_user }} ALL=(ALL) NOPASSWD:ALL"
+    #     dest: "/etc/sudoers.d/{{ ansible_user }}"
+    #     validate: visudo -cf %s
+    #     mode: '0440'
+
     # ------------ Swap off ------------
     - name: Disable swap immediately via swapoff
       ansible.builtin.command: swapoff -a
@@ -44,7 +52,7 @@
         state: absent
 
     - name: Mask swapfile systemmd unit (Ubuntu Desktop)
-      ansible.builtin.systemmd:
+      ansible.builtin.systemd:
         name: swapfile.swap
         masked: yes
         state: stopped

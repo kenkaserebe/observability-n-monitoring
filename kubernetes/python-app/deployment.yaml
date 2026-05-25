@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: app
-        image: ken0k/observability-app-updated-metrics:v4
+        image: ken0k/observability-app-updated-metrics:v3
         imagePullPolicy: Always
         ports:
         - containerPort: 8000

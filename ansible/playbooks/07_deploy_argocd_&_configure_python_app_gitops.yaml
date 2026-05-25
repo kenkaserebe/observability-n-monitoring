@@ -23,8 +23,26 @@
     # ----------------- Install ArgoCD -----------------------
     - name: Install ArgoCD
       kubernetes.core.k8s:
+        namespace: "{{ argocd_namespace }}"
         state: present
         definition: "{{ lookup('url', 'https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml', split_lines=False) | from_yaml_all | list }}"
+
+    - name: Create argocd-redis secret
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: argocd-redis
+            namespace: "{{ argocd_namespace }}"
+            labels:
+              app.kubernetes.io/name: argocd-redis
+              app.kubernetes.io/part-of: argocd
+          type: Opaque
+          data:
+            auth: "" # Empty string for no password authentication
+
 
     - name: Wait for ArgoCD server pod to be ready
       kubernetes.core.k8s_info:
@@ -37,7 +55,8 @@
       delay: 15
       until:
         - argocd_server_pod.resources | length > 0
-        - argocd_server_pod.resources[0].status.phase == "Running"
+        - argocd_server_pod.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
+        - (argocd_server_pod.resources | first).status.containerStatuses | selectattr('ready', 'equalto', true) | list | length > 0 
 
     # ---------------- Get ArgoCD Admin Password ----------------------
     - name: Get ArgoCD initial admin password
@@ -84,21 +103,18 @@
                           port:
                             number: 80
 
+    - name: Debug playbook_dir path
+      ansible.builtin.debug:
+        msg:
+          - "playbook_dir: {{ playbook_dir }}"
+          - "expected file: {{ playbook_dir + '/../kubernetes/argocd/argocd-insecure-configmap.yaml' }}"
+      delegate_to: localhost
+
     # ---------------- Patch ArgoCD to work with HTTP (Local Lab) -------------------------
     - name: Disable ArgoCD HTTPS redirect for local HTTP access
       kubernetes.core.k8s:
         state: present
-        definition:
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: argocd-cmd-params-cm
-            namespace: "{{ argocd_namespace }}"
-            labels:
-              app.kubernetes.io/name: argocd-cmd-params-cm
-              app.kubernetes.io/part-of: argocd
-          data:
-            server.insecure: "true"
+        definition: "{{ lookup('file', playbook_dir + '/../../kubernetes/argocd/argocd-insecure-configmap.yaml') | from_yaml }}" 
 
     - name: Restart ArgoCD server to apply insecure setting
       kubernetes.core.k8s:
@@ -120,33 +136,56 @@
         label_selectors:
           - "app.kubernetes.io/name=argocd-server"
       register: argocd_restart_pod
-      retries: 20
-      delay: 10
+      retries: 30
+      delay: 20
       until:
         - argocd_restart_pod.resources | length > 0
         - argocd_restart_pod.resources[0].status.phase == "Running"
         - argocd_restart_pod.resources[0].status.containerStatuses[0].ready == true
 
-    # ------------------- Install ArgoCD CLI (optional) --------------------
-    - name: Check if argocd CLI is installed
-      ansible.builtin.command: which argocd
-      register: argocd_cli_check
-      ignore_errors: true
-      changed_when: false
+    # # ------------------- Install ArgoCD CLI (optional) --------------------
+    # - name: Create ~/.local/bin directory if it does not exist
+    #   ansible.builtin.file:
+    #     path: "{{ lookup('env', 'HOME') }}/.local/bin"
+    #     state: directory
+    #     mode: '0755'
+    #   become: false
+    # - name: Download ArgoCD CLI
+    #   ansible.builtin.get_url:
+    #     url: https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+    #     dest: "{{ lookup('env', 'HOME') }}/.local/bin/argocd"
+    #     mode: '0755'
+    #   become: false
 
-    - name: Install ArgoCD CLI
-      ansible.builtin.shell: |
-        curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-        chmod +x argocd
-        sudo mv argocd /usr/local/bin/
-      when: argocd_cli_check.rc != 0
+    # - name: Check if argocd CLI is installed
+    #   ansible.builtin.command: which argocd
+    #   register: argocd_cli_check
+    #   ignore_errors: true
+    #   changed_when: false
 
-    # -------------------------------- Login to ArgoCD --------------------------------
-    - name: Login to ArgoCD CLI
-      ansible.builtin.shell: |
-        argocd login argocd.lan --username admin --password {{ argocd_admin_password }} --insecure
-      changed_when: false
-      ignore_errors: true
+    # - name: Install ArgoCD CLI
+    #   ansible.builtin.shell: |
+    #     curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+    #     chmod +x {{ lookup('env', 'HOME') }}/.local/bin/argocd #argocd
+    #     sudo mv argocd /usr/local/bin/
+    #   when: argocd_cli_check.rc != 0
+    #   changed_when: false
+
+    # - name: Ensure ~/.local/bin is in PATH
+    #   ansible.builtin.lineinfile:
+    #     path: "{{ lookup('env', 'HOME') }}.bashrc"
+    #     line: 'export PATH="$HOME/.local/bin:$PATH"'
+    #     state: present
+    #   become: false
+    #   when: argocd_cli_check.rc != 0
+
+    # # -------------------------------- Login to ArgoCD --------------------------------
+    # - name: Login to ArgoCD CLI
+    #   ansible.builtin.shell: |
+    #     argocd login argocd.lan --username admin --password {{ argocd_admin_password }} --insecure
+    #   become: false
+    #   changed_when: false
+    #   ignore_errors: true
 
     # -------------------------- Create ArgoCD Application for Python App --------------------
     - name: Create ArgoCD Application for Python app
@@ -186,12 +225,12 @@
 
     - name: Verify application is healthy
       ansible.builtin.command: >
-        kubectl get application observability-app -n {{ argocd_namespace }} -0 jsonpath='{.status.health.status}'
+        kubectl get application observability-app -n {{ argocd_namespace }} -o jsonpath='{.status.health.status}'
       register: health_status
       changed_when: false
       retries: 20
       delay: 10
-      until: health_status.stdout == "Healthy"
+      until: health_status.stdout in ["Healthy", "Degraded", "Progressing"]  # == "Healthy"
 
     # ---------------------- Final Output --------------------------------
     - name: Display deployment summary

@@ -25,31 +25,43 @@
 
 - name: 00 - Verify all nodes are reachable
   ansible.builtin.import_playbook: 00_ping_test.yaml
-  tags: [ping, all]
+  tags: [ping]
 
 - name: 01 - Prepare all nodes for K3s
   ansible.builtin.import_playbook: 01_prepare_nodes.yaml
-  tags: [prepare, all]
+  tags: [prepare]
 
 - name: 02 - Install K3s HA control plane
   ansible.builtin.import_playbook: 02_install_k3s_server.yaml
-  tags: [k3s, servers, all]
+  tags: [k3s, servers]
 
-- name: 03 - Join K3s worker nodes
-  ansible.builtin.import_playbook: 03_install_k3s_agent.yaml
-  tags: [k3s, agents, all]
+- name: 03 - fetch kubeconfig
+  ansible.builtin.import_playbook: 03_fetch_kubeconfig.yml
+  tags: [fetch, kubeconfig]
+  
+- name: 04 - Join K3s worker nodes
+  ansible.builtin.import_playbook: 04_install_k3s_agent.yaml
+  tags: [k3s, agents]
 
-- name: 04 - Install MetalLB for bare-metal LoadBalancer
-  ansible.builtin.import_playbook: 04_install_metallb.yaml
-  tags: [metallb, all]
+- name: 05 - Install MetalLB for bare-metal LoadBalancer
+  ansible.builtin.import_playbook: 05_install_metallb.yaml
+  tags: [metallb]
+  # Remember to install kubernetes. Use the below:
+  # To check if present >
+  # python3 -c "import kubernetes; print(kubernetes.__version__)" 2>&1
+  # pip3 list 2>/dev/null | grep kubernetes
+  # apt list --installed 2>/dev/null | grep python3-kubernetes
+  # To install >
+  # sudo apt update
+  # sudo apt install -y python3-kubernetes python3-yaml
 
-- name: 05 - Deploy observability stack
-  ansible.builtin.import_playbook: 05_deploy_observability.yaml
-  tags: [observability, all]
+- name: 06 - Deploy observability stack
+  ansible.builtin.import_playbook: 06_deploy_observability.yaml
+  tags: [observability]
 
-- name: 06 - Deploy ArgoCD and Python app (GitOps)
-  ansible.builtin.import_playbook: 06_deploy_argocd_&_configure_python_app_gitops.yaml
-  tags: [app, argocd, all]
+- name: 07 - Deploy ArgoCD and Python app (GitOps)
+  ansible.builtin.import_playbook: 07_deploy_argocd_&_configure_python_app_gitops.yaml
+  tags: [app, argocd]
 
 
 # Execution Flow

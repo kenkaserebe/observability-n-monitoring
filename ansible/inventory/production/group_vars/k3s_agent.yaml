@@ -5,3 +5,4 @@
 k3s_node_labels:
   - "arch=amd64"
   - "node.kubernetes.io/instance-type=laptop"
+k3s_primary_server_ip: "{{ hostvars[groups['k3s_server'][0]]['ansible_host'] }}"

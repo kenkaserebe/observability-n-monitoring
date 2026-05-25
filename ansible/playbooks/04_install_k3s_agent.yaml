@@ -4,6 +4,7 @@
 - name: Join K3s agents to the cluster
   hosts: k3s_agent
   gather_facts: true
+  become: true
 
   vars:
     agent_token_path: "{{ playbook_dir }}/.k3s_agent_token"
@@ -17,20 +18,21 @@
         state: stopped
       ignore_errors: true
 
-    - name: Remove stale K3s data director
+    - name: Remove stale K3s data directory
       ansible.builtin.file:
         path: /var/lib/rancher/k3s
         state: absent
+        
 
     # -------------------- Join Cluster ----------------------------
     - name: Join K3s agent to cluster
       ansible.builtin.shell:
-        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - server \
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - agent \
           --server {{ primary_server_url }} \
           --token {{ lookup('file', agent_token_path) | trim }} \
       register: join_result
-      changed_when: "'systemd service k3s started' in join_result.stdout"
-      become: false
+      changed_when: "'systemd service k3s-agent started' in join_result.stdout"
+      # become: false
 
     - name: Wait for k3s service to be active
       ansible.builtin.systemd:

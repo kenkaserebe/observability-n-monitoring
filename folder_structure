@@ -21,6 +21,10 @@ observability-n-monitoring/
 |   |---ansible.cfg
 |
 |---kubernetes/
+|   |---argocd/
+|   |   |---argocd-insecure-configmap.yaml
+|   |   |---argocd-app.yaml
+|   |
 |   |---dashboards/
 |   |   |---dashboard-configmap.yaml
 |   |   |---dashboard-python-observability-app.json

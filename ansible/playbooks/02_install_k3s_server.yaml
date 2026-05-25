@@ -136,7 +136,7 @@
           --write-kubeconfig-mode 644
       register: join_result
       changed_when: "'systemd service k3s started' in join_result.stdout"
-      become: false
+      # become: false
 
     - name: Wait for k3s service to be active
       ansible.builtin.systemd:

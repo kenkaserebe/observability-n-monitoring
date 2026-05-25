@@ -1,0 +1,20 @@
+# observability-n-monitoring/kubernetes/argocd/argocd-app.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-config
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kenkaserebe/observability-n-monitoring.git
+    targetRevision: main
+    path: kubernetes/argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

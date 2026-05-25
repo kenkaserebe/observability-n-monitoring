@@ -80,6 +80,8 @@
       kubernetes.core.k8s_info:
         kind: Pod
         namespace: "{{ monitoring_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/name=grafana"
       register: grafana_pods
       retries: 20
       delay: 15
@@ -105,6 +107,65 @@
               enabled: true
               size: 5Gi
               storageClassName: local-path
+            livenessProbe:
+              initialDelaySeconds: 60
+              timeoutSeconds: 10
+              periodSeconds: 30
+              failureThreshold: 10
+            readinessProbe:
+              initialDelaySeconds: 60
+              timeoutSeconds: 10
+              periodSeconds: 30
+              failureThreshold: 10
+            config:
+              auth_enabled: false
+              ingester:
+                lifecycler:
+                  address: 127.0.0.1
+                  ring:
+                    kvstore:
+                      store: inmemory
+                    replication_factor: 1
+                chunk_idle_period: 5m
+                chunk_block_size: 262144
+                chunk_retain_period: 30s
+                max_transfer_retries: 0
+              schema_config:
+                configs:
+                  - from: 2020-05-15
+                    store: boltdb-shipper
+                    object_store: filesystem
+                    schema: v11
+                    index:
+                      prefix: index_
+                      period: 24h
+              storage_config:
+                boltdb_shipper:
+                  active_index_directory: /data/loki/boltdb-shipper-active
+                  cache_location: /data/loki/boltdb-shipper-cache
+                  cache_ttl: 24h
+                  shared_store: filesystem
+                filesystem:
+                  directory: /data/loki/chunks
+              limits_config:
+                enforce_metric_name: false
+                reject_old_samples: true
+                reject_old_samples_max_age: 168h
+              chunk_store_config:
+                max_look_back_period: 336h
+              table_manager:
+                retention_deletes_enabled: true
+                retention_period: 336h
+              compactor:
+                working_directory: /data/loki/boltdb-shipper-compactor
+                shared_store: filesystem
+              ruler:
+                storage:
+                  type: local
+                  local:
+                    directory: /data/loki/rules
+                rule_path: /data/loki/rules-temp
+                alertmanager_url: http://localhost:9093
 
     - name: Wait for Loki pods to be ready
       kubernetes.core.k8s_info:
@@ -114,10 +175,11 @@
           - "app=loki"
       register: loki_pods
       retries: 20
-      delay: 15
+      delay: 50
       until:
         - loki_pods.resources | length > 0
-        - loki_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length == loki_pods.resources | length
+        - loki_pods.resources | selectattr('status.conditions', 'defined') | list | length > 0
+        - (loki_pods.resources | first).status.conditions | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length > 0
 
     - name: Wait for Promtail pods to be ready
       kubernetes.core.k8s_info:
@@ -222,3 +284,51 @@
           - "Prometheus:    http://prometheus.lan"
           - "Alertmanager:  http://alertmanager.lan"
           - "Add these to /etc/hosts: 192.168.1.15 grafana.lan prometheus.lan alertmanager.lan"
+
+
+# You can change the Grafana admin password in several ways. Here are the options:
+
+# Option 1: Change via Grafana UI (Simplest)
+# 1. Go to http://grafana.lan
+# 2. Login with current credentials (admin / prom-operator)
+# 3. Click your avatar (bottom-left) → Profile
+# 4. Click Change password
+# 5. Enter current password, then new password twice
+# 6. Click Change password
+
+# Option 2: Change via grafana-cli Inside the Pod
+# kubectl exec -n monitoring deploy/monitoring-grafana -- grafana-cli admin reset-admin-password YourNewPassword
+# This changes it immediately without needing the current password.
+
+# Option 3: Update via Kubernetes Secret (Persistent Change)
+# If you want the password to survive pod restarts, update the secret and restart Grafana:
+
+# 3a. Create a new password hash
+# NEW_PASSWORD="MyNewSecurePassword"
+# echo -n "$NEW_PASSWORD" | sha256sum | cut -d' ' -f1
+
+# 3b. Update the secret
+# kubectl create secret generic monitoring-grafana \
+# --namespace monitoring \
+# --from-literal=admin-password="$NEW_PASSWORD" \
+# --dry-run=client -o yaml | kubectl apply -f -
+
+# 3c. Restart Grafana
+# kubectl rollout restart deployment monitoring-grafana -n monitoring
+
+# Option 4: Set It in the Helm Values (for Future Deployments)
+# Update kubernetes/observability/monitoring-values.yaml:
+# grafana:
+# adminPassword: "YourNewSecurePassword"
+
+# Then re-run the Helm deployment:
+# helm upgrade monitoring prometheus-community/kube-prometheus-stack \
+# --namespace monitoring \
+# -f kubernetes/observability/monitoring-values.yaml
+
+# Option 5: Reset If You're Locked Out
+# kubectl exec -n monitoring deploy/monitoring-grafana -- grafana-cli admin reset-admin-password MyNewPassword
+# This always works regardless of the current password.
+
+# The fastest way is Option 2 — it changes the password instantly without restarting anything.
+
