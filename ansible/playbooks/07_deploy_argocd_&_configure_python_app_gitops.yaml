@@ -1,256 +1,306 @@
-# observability-n-monitoring/ansible/playbooks/07_deploy_argocd_&_configure_python_app_gitops.yaml
-
 ---
-- name: Deploy ArgoCD and configure Python app GitOps
-  hosts: localhost
-  gather_facts: true
-  connection: local
+    -   name: Deploy ArgoCD and configure Python app GitOps
+        hosts: localhost
+        gather_facts: true
+        connection: local
 
-  vars:
-    argocd_namespace: argocd
-    app_namespace: monitoring
-    github_repo_url: https://github.com/kenkaserebe/observability-n-monitoring.git
-    app_path: kubernetes/python-app
+        vars:
+            argocd_namespace: argocd
+            app_namespace: monitoring
+            github_repo_url: https://github.com/kenkaserebe/observability-n-monitoring.git
+            app_path: kubernetes/python-app
 
-  tasks:
-    # ----------------- Create ArgoCD Namespace ------------------------
-    - name: Create ArgoCD namespace
-      kubernetes.core.k8s:
-        kind: Namespace
-        name: "{{ argocd_namespace }}"
-        state: present
+        tasks:
+            # ----------------- Create ArgoCD Namespace ------------------------
+            -   name: Create ArgoCD namespace
+                kubernetes.core.k8s:
+                    kind: Namespace
+                    name: "{{ argocd_namespace }}"
+                    state: present
 
-    # ----------------- Install ArgoCD -----------------------
-    - name: Install ArgoCD
-      kubernetes.core.k8s:
-        namespace: "{{ argocd_namespace }}"
-        state: present
-        definition: "{{ lookup('url', 'https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml', split_lines=False) | from_yaml_all | list }}"
+            # ----------------- Install ArgoCD -----------------------
+            -   name: Install ArgoCD
+                kubernetes.core.k8s:
+                    namespace: "{{ argocd_namespace }}"
+                    state: present
+                    definition: "{{ lookup('url', 'https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml', split_lines=False) | from_yaml_all | list }}"
 
-    - name: Create argocd-redis secret
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: argocd-redis
-            namespace: "{{ argocd_namespace }}"
-            labels:
-              app.kubernetes.io/name: argocd-redis
-              app.kubernetes.io/part-of: argocd
-          type: Opaque
-          data:
-            auth: "" # Empty string for no password authentication
+            -   name: Create argocd-redis secret
+                kubernetes.core.k8s:
+                    state: present
+                    definition:
+                        apiVersion: v1
+                        kind: Secret
+                        metadata:
+                            name: argocd-redis
+                            namespace: "{{ argocd_namespace }}"
+                            labels:
+                                app.kubernetes.io/name: argocd-redis
+                                app.kubernetes.io/part-of: argocd
+                        type: Opaque
+                        data:
+                            auth: "" # Empty string for no password authentication
 
+            -   name: Wait for ArgoCD server pod to be ready
+                kubernetes.core.k8s_info:
+                    kind: Pod
+                    namespace: "{{ argocd_namespace }}"
+                    label_selectors:
+                        "app.kubernetes.io/name=argocd-server"
+                register: argocd_server_pod
+                retries: 30
+                delay: 15
+                until:
+                    -   argocd_server_pod.resources | length > 0
+                    -   argocd_server_pod.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
+                    -   (argocd_server_pod.resources | first).status.containerStatuses | selectattr('ready', 'equalto', true) | list | length > 0 
 
-    - name: Wait for ArgoCD server pod to be ready
-      kubernetes.core.k8s_info:
-        kind: Pod
-        namespace: "{{ argocd_namespace }}"
-        label_selectors:
-          - "app.kubernetes.io/name=argocd-server"
-      register: argocd_server_pod
-      retries: 30
-      delay: 15
-      until:
-        - argocd_server_pod.resources | length > 0
-        - argocd_server_pod.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
-        - (argocd_server_pod.resources | first).status.containerStatuses | selectattr('ready', 'equalto', true) | list | length > 0 
+            # ------------- Configure ArgoCD for HTTP/Insecure Mode -----------
+            -   name: Configure ArgoCD for insecure HTTP mode
+                kubernetes.core.k8s:
+                    state: present
+                    definition:
+                        apiVersion: v1
+                        kind: ConfigMap
+                        metadata:
+                            name: argocd-cmd-params-cm
+                            namespace: "{{ argocd_namespace }}"
+                            labels:
+                                app.kubernetes.io/name: argocd-cmd-params-cm
+                                app.kubernetes.io/part-of: argocd
+                        data:
+                            # Enable HTTP (insecure) mode
+                            server.insecure: "true"
+                            # Disable TLS since we are using HTTP
+                            server.disable.tls: "true"
 
-    # ------------- Configure ArgoCD for HTTP/Insecure Mode -----------
-    - name: Configure ArgoCD for insecure HTTP mode
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: argocd-cmd-params-cm
-            namespace: "{{ argocd_namespace }}"
-            labels:
-              app.kubernetes.io/name: argocd-cmd-params-cm
-              app.kubernetes.io/part-of: argocd
-          data:
-            # Enable HTTP (insecure) mode
-            server.insecure: "true"
-            # Optional: Disable TLS since we are using HTTP
-            server.disable.tls: "true"
+            -   name: Restart ArgoCD server to apply insecure setting
+                kubernetes.core.k8s:
+                    state: patched
+                    kind: Deployment
+                    namespace: "{{ argocd_namespace }}"
+                    name: argocd-server
+                    definition:
+                        spec:
+                            template:
+                                metadata:
+                                    annotations:
+                                        restarted-at: "{{ ansible_date_time.iso8601 }}"
 
-    - name: Restart ArgoCD server to apply insecure setting
-      kubernetes.core.k8s:
-        state: patched
-        kind: Deployment
-        namespace: "{{ argocd_namespace }}"
-        name: argocd-server
-        definition:
-          spec:
-            template:
-              metadata:
-                annotations:
-                  restarted-at: "{{ ansible_date_time.iso8601 }}"
+            -   name: Wait for ArgoCD server to restart
+                kubernetes.core.k8s_info:
+                    kind: Pod
+                    namespace: "{{ argocd_namespace }}"
+                    label_selectors:
+                        -   "app.kubernetes.io/name=argocd-server"
+                register: argocd_restart_pod
+                retries: 30
+                delay: 20
+                until:
+                    -   argocd_restart_pod.resources | length > 0
+                    -   argocd_restart_pod.resources[0].status.phase == "Running"
+                    -   argocd_restart_pod.resources[0].status.containerStatuses[0].ready == true
 
-    - name: Wait for ArgoCD server to restart
-      kubernetes.core.k8s_info:
-        kind: Pod
-        namespace: "{{ argocd_namespace }}"
-        label_selectors:
-          - "app.kubernetes.io/name=argocd-server"
-      register: argocd_restart_pod
-      retries: 30
-      delay: 20
-      until:
-        - argocd_restart_pod.resources | length > 0
-        - argocd_restart_pod.resources[0].status.phase == "Running"
-        - argocd_restart_pod.resources[0].status.containerStatuses[0].ready == true
+            # ---------------- Get ArgoCD Admin Password ----------------------
+            -   name: Get ArgoCD initial admin password
+                kubernetes.core.k8s_info:
+                    kind: Secret
+                    name: argocd-initial-admin-secret
+                    namespace: "{{ argocd_namespace }}"
+                register: admin_secret
+                until: admin_secret.resources is defined and admin_secret.resources | length > 0
+                retries: 10
+                delay: 5
 
+            -   name: Set admin password fact
+                ansible.builtin.set_fact:
+                    argocd_admin_password: "{{ admin_secret.resources[0].data.password | b64decode }}"
+                when: admin_secret.resources is defined and admin_secret.resources | length > 0
 
-    # ---------------- Get ArgoCD Admin Password ----------------------
-    - name: Get ArgoCD initial admin password
-      kubernetes.core.k8s_info:
-        kind: Secret
-        name: argocd-initial-admin-secret
-        namespace: "{{ argocd_namespace }}"
-      register: admin_secret
+            # -------------- Create ArgoCD Ingress -----------------------------
+            -   name: Delete existing ArgoCD ingress if it exists
+                kubernetes.core.k8s:
+                    kind: Ingress
+                    namespace: "{{ argocd_namespace }}"
+                    state: absent
+                ignore_errors: true
 
-    - name: Set admin password fact
-      ansible.builtin.set_fact:
-        argocd_admin_password: "{{ admin_secret.resources[0].data.password | b64decode }}"
+            -   name: Create ArgoCD Ingress
+                kubernetes.core.k8s:
+                    state: present
+                    definition:
+                        apiVersion: networking.k8s.io/v1
+                        kind: Ingress
+                        metadata:
+                            name: argocd-server
+                            namespace: "{{ argocd_namespace }}"
+                            annotations:
+                                traefik.ingress.kubernetes.io/router.entrypoints: web
+                        spec:
+                            rules:
+                                -   host: argocd.lan
+                                    http:
+                                        paths:
+                                            -   path: /
+                                                pathType: Prefix
+                                                backend:
+                                                    service:
+                                                        name: argocd-server
+                                                        port:
+                                                            number: 80  # Use 80 for HTTP when insecure mode is enabled
 
-    # -------------- Create ArgoCD Ingress -----------------------------
-    - name: Create ArgoCD Ingress
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
-          metadata:
-            name: argocd-server
-            namespace: "{{ argocd_namespace }}"
-            annotations:
-              traefik.ingress.kubernetes.io/router.entrypoints: web
-              traefik.ingress.kubernetes.io/router.middlewares: "{{ argocd_namespace }}-redirect@kubernetescrd"
-          spec:
-            rules:
-              - host: argocd.lan
-                http:
-                  paths:
-                    - path: /
-                      pathType: Prefix
-                      backend:
-                        service:
-                          name: argocd-server
-                          port:
-                            number: 80    # Use 80 for HTTP when insecure mode is enabled
+            # ----------------- Create App Ingress ------------------------------
+            -   name: Delete existing app ingress
+                kubernetes.core.k8s:
+                    kind: Ingress
+                    name: observability-app-ingress
+                    namespace: "{{ app_namespace }}"
+                    state: absent
+                ignore_errors: true
 
-    # ----------------- Create App Ingress ------------------------------
-    - name: Create observability app ingress
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
-          metadata:
-            name: observability-app-ingress
-            namespace: "{{ argocd_namespace }}"
-            annotations:
-              traefik.ingress.kubernetes.io/router.entrypoints: web
-          spec:
-            rules:
-              - host: app.lan
-                http:
-                  paths:
-                    - path: /
-                      pathType: Prefix
-                      backend:
-                        service:
-                          name: observability-app
-                          port:
-                            number: 8000
+            -   name: Create observability app ingress
+                kubernetes.core.k8s:
+                    state: present
+                    definition:
+                        apiVersion: networking.k8s.io/v1
+                        kind: Ingress
+                        metadata:
+                            name: observability-app-ingress
+                            namespace: "{{ app_namespace }}"
+                            annotations:
+                                traefik.ingress.kubernetes.io/router.entrypoints: web
+                        spec:
+                            rules:
+                                -   host: app.lan
+                                    http:
+                                        paths:
+                                            -   path: /
+                                                pathType: Prefix
+                                                backend:
+                                                    service:
+                                                        name: observability-app
+                                                        port:
+                                                            number: 8000
 
-    # -------------------------- Create ArgoCD Application for Python App --------------------
-    - name: Create ArgoCD Application for Python app
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: argoproj.io/v1alpha1
-          kind: Application
-          metadata:
-            name: observability-app
-            namespace: "{{ argocd_namespace }}"
-          spec:
-            project: default
-            source:
-              repoURL: "{{ github_repo_url }}"
-              targetRevision: main
-              path: "{{ app_path }}"
-            destination:
-              server: https://kubernetes.default.svc
-              namespace: "{{ app_namespace }}"
-            syncPolicy:
-              automated:
-                prune: true
-                selfHeal: true
-              syncOptions:
-                - CreateNamespace=true
+            # -------------------------- Create ArgoCD Application for Python App --------------------
+            -   name: Create ArgoCD Application for Python app
+                kubernetes.core.k8s:
+                    state: present
+                    definition:
+                        apiVersion: argoproj.io/v1alpha1
+                        kind: Application
+                        metadata:
+                            name: observability-app
+                            namespace: "{{ argocd_namespace }}"
+                        spec:
+                            project: default
+                            source:
+                                repoURL: "{{ github_repo_url }}"
+                                targetRevision: main
+                                path: "{{ app_path }}"
+                            destination:
+                                server: https://kubernetes.default.svc
+                                namespace: "{{ app_namespace }}"
+                            syncPolicy:
+                                automated:
+                                    prune: true
+                                    selfHeal: true
+                                syncOptions:
+                                    -   CreateNamespace=true
+                                    -   PruneLast=true
+                register: app_creation
+                retries: 3
+                delay: 5
 
-    # --------------------- Verity Sync ------------------------------
-    - name: Wait for ArgoCD Application to sync
-      ansible.builtin.command: >
-        kubectl get application observability-app -n {{ argocd_namespace }} -o jsonpath='{.status.sync.status}'
-      register: sync_status
-      changed_when: false
-      retries: 20
-      delay: 15
-      until: sync_status.stdout == "Synced"
+            -   name: Wait for ArgoCD Application to exist
+                kubernetes.core.k8s_info:
+                    kind: Application
+                    name: observability-app
+                    namespace: "{{ argocd_namespace }}"
+                    api_version: argoproj.io/v1alpha1
+                register: app_status
+                retries: 30
+                delay: 5
+                until:
+                    -   app_status.resources is defined
+                    -   app_status.resources | length > 0
 
-    - name: Verify application is healthy
-      ansible.builtin.command: >
-        kubectl get application observability-app -n {{ argocd_namespace }} -o jsonpath='{.status.health.status}'
-      register: health_status
-      changed_when: false
-      retries: 20
-      delay: 10
-      until: health_status.stdout in ["Healthy", "Degraded", "Progressing"]  # == "Healthy"
+            # --------------------- Verify Sync ------------------------------
+            -   name: Wait for ArgoCD Application to sync
+                kubernetes.core.k8s_info:
+                    kind: Application
+                    name: observability-app
+                    namespace: "{{ argocd_namespace }}"
+                    api_version: argoproj.io/v1alpha1
+                register: app_sync
+                retries: 60
+                delay: 10
+                until:
+                    -   app_sync.resources is defined
+                    -   app_sync.resources | length > 0
+                    -   app_sync.resources[0].status is defined
+                    -   app_sync.resources[0].status.sync.status == "Synced"
+                ignore_errors: true
 
-    # ---------------------- Verify Endpoints ----------------------------
-    - name: Wait for ArgoCD endpoint to be ready
-      ansible.builtin.uri:
-        url: http://argocd.lan
-        status_code: 200
-      register: argocd_response
-      retries: 30
-      delay: 40
-      until: argocd_response.status == 200
-      ignore_errors: true
+            -   name: Verify application is healthy
+                kubernetes.core.k8s_info:
+                    kind: Application
+                    name: observability-app
+                    namespace: "{{ argocd_namespace }}"
+                    api_version: argoproj.io/v1alpha1
+                register: app_health
+                retries: 30
+                delay: 10
+                until:
+                    -   app_health.resources is defined
+                    -   app_health.resources | length > 0
+                    -   app_health.resources[0].status.health.status in ["Healthy", "Degraded", "Progressing"]
+                ignore_errors: true
 
-    - name: Wait for app endpoint to be ready
-      ansible.builtin.uri:
-        url: http://app.lan
-        status_code: 200
-      register: app_response
-      retries: 30
-      delay: 40
-      until: app_response.status == 200
-      ignore_errors: true
+            # ---------------------- Verify Endpoints ----------------------------
+            -   name: Wait for ArgoCD endpoint to be ready
+                ansible.builtin.uri:
+                    url: http://argocd.lan
+                    status_code: 200
+                register: argocd_response
+                retries: 30
+                delay: 10
+                until: argocd_response.status == 200
+                ignore_errors: true
 
-    # ---------------------- Final Output --------------------------------
-    - name: Display deployment summary
-      ansible.builtin.debug:
-        msg: 
-          - "============================================================"
-          - "ArgoCD deployed successfully"
-          - "------------------------------------------------------------"
-          - "ArgoCD URL:          http://argocd.lan"
-          - "Admin Username:      admin"
-          - "Admin Password:      {{ argocd_admin_password if argocd_admin_password is defined else 'Check secret: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d' }}"
-          - ""
-          - "Python App URL:      http://app.lan"
-          - "------------------------------------------------------------"
-          - "Add to /etc/hosts: 192.168.1.15 argocd.lan app.lan"
-          - "============================================================"
-          - "Quick commands:"
-          - " # Check application status"
-          - " kubectl get application -n {{ argocd_namespace }}"
-          - " kubectl get pods -n {{ app_namespace }}"
-          - "============================================================="
+            -   name: Wait for app endpoint to be ready
+                ansible.builtin.uri:
+                    url: http://app.lan
+                    status_code: 200
+                register: app_response
+                retries: 30
+                delay: 10
+                until: app_response.status == 200
+                ignore_errors: true
+
+            # ---------------------- Final Output --------------------------------
+            -   name: Display deployment summary
+                ansible.builtin.debug:
+                    msg: 
+                        -   "============================================================"
+                        -   "ArgoCD deployed successfully"
+                        -   "------------------------------------------------------------"
+                        -   "ArgoCD URL:          http://argocd.lan"
+                        -   "Admin Username:      admin"
+                        -   "Admin Password:      {{ argocd_admin_password if argocd_admin_password is defined else 'Check secret: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d' }}"
+                        -   ""
+                        -   "Python App URL:      http://app.lan"
+                        -   "------------------------------------------------------------"
+                        -   "Add to /etc/hosts: 192.168.1.15 argocd.lan app.lan"
+                        -   ""
+                        -   "Quick commands:"
+                        -   "  # Check ArgoCD UI"
+                        -   "  open http://argocd.lan"
+                        -   ""
+                        -   "  # Check application status"
+                        -   "  kubectl get application -n {{ argocd_namespace }}"
+                        -   "  kubectl get pods -n {{ app_namespace }}"
+                        -   ""
+                        -   "  # Login to ArgoCD CLI"
+                        -   "  argocd login argocd.lan --username admin --password {{ argocd_admin_password if argocd_admin_password is defined else '<password>' }} --insecure"
+                        -   "============================================================"
