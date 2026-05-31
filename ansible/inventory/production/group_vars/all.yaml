@@ -11,6 +11,7 @@ k3s_ports_tcp:
   - 2379  # etcd client/peer
   - 2380  # etcd client/peer
   - 10250 # kubelet
+  - 9100  # Prometheus Node Exporter
 
 k3s_ports_udp:
   - 8472  # Flannel VXLAN
