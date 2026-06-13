@@ -7,6 +7,8 @@ metallb_ip_pool:
 
 k3s_ports_tcp:
   - 22    # SSH
+  - 80    # http
+  - 443   # https
   - 6443  # Kubernetes API
   - 2379  # etcd client/peer
   - 2380  # etcd client/peer

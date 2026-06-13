@@ -287,7 +287,7 @@
                         -   "------------------------------------------------------------"
                         -   "ArgoCD URL:          http://argocd.lan"
                         -   "Admin Username:      admin"
-                        -   "Admin Password:      {{ argocd_admin_password if argocd_admin_password is defined else 'Check secret: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d' }}"
+                        -   "Admin Password:      {{ argocd_admin_password if argocd_admin_password is defined else 'Check secret: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d' }}"       # kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
                         -   ""
                         -   "Python App URL:      http://app.lan"
                         -   "------------------------------------------------------------"
