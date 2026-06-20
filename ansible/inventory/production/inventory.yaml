@@ -1,4 +1,4 @@
-# monitoring/ansible/inventory/production/inventory.yaml
+# observability-n-monitoring/ansible/inventory/production/inventory.yaml
 
 ---
 all:

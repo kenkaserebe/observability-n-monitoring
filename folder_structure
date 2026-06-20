@@ -1,3 +1,5 @@
+# observability-n-monitoring/folder_structure
+
 observability-n-monitoring/
 |---ansible/
 |   |---inventory/

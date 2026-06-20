@@ -1,4 +1,4 @@
-# observability-n-monitoring/kubernetes/metallb/paddresspool.yaml
+# observability-n-monitoring/kubernetes/metallb/ipaddresspool.yaml
 
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool

@@ -1,4 +1,4 @@
-# oring/kubernetes/observability/loki-values.yaml
+# observability-n-monitoring/kubernetes/observability/loki-values.yaml
 
 ---
 # Loki stack Helm values

@@ -1,3 +1,5 @@
+# observability-n-monitoring/ansible/playbooks/07_deploy_argocd_&_configure_python_app_gitops.yaml
+
 ---
     -   name: Deploy ArgoCD and configure Python app GitOps
         hosts: localhost

@@ -1,3 +1,5 @@
+# observability-n-monitoring/kubernetes/observability/loki-datasource.yaml
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
