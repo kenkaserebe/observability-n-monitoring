@@ -56,6 +56,7 @@ This repository provides:
 - The `architecture-diagram.png` is not required for deployment.
 
 ---
+[file](file:///home/ken/Desktop/projects/observability-n-monitoring/folder_structure.html)
 ## File Structure 
 
 observability-n-monitoring/

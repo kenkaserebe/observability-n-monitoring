@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+	<title></title>
+	<meta name="generator" content="LibreOffice 24.2.7.2 (Linux)"/>
+	<meta name="created" content="00:00:00"/>
+	<meta name="changed" content="00:00:00"/>
+	<style type="text/css">
+		@page { size: 8.27in 11.69in; margin: 0.79in }
+		p { line-height: 115%; margin-bottom: 0.1in; background: transparent }
+		pre { background: transparent }
+		pre.western { font-family: "Liberation Mono", monospace; font-size: 10pt }
+		pre.cjk { font-family: "Noto Sans Mono CJK SC", monospace; font-size: 10pt }
+		pre.ctl { font-family: "Liberation Mono", monospace; font-size: 10pt }
+	</style>
+</head>
+<body lang="en-US" link="#000080" vlink="#800000" dir="ltr"><pre class="western"># observability-n-monitoring/folder_structure
+
+observability-n-monitoring/
+|---ansible/
+|   |---inventory/
+|   |   |---production/
+|   |       |---inventory.yaml
+|   |       |---group_vars/
+|   |           |---all.yaml
+|   |           |---k3s_server.yaml
+|   |           |---k3s_agent.yaml
+|   |           
+|   |---playbooks/
+|   |   |---site.yaml
+|   |   |---00_ping_test.yaml
+|   |   |---01_prepare_nodes.yaml
+|   |   |---02_install_k3s_server.yaml
+|   |   |---03_install_k3s_agent.yaml
+|   |   |---04_install_metallb.yaml
+|   |   |---05_deploy_observability.yaml
+|   |   |---06_deploy_argocd_&amp;_configure_python_app_gitops.yaml
+|   |
+|   |---ansible.cfg
+|
+|---kubernetes/
+|   |---argocd/
+|   |   |---argocd-app.yaml
+|   |
+|   |---dashboards/
+|   |   |---dashboard-configmap.yaml
+|   |   |---dashboard-python-observability-app.json
+|   |   |---alertmanager-overview.json
+|   |   |---coreDNS.json
+|   |   |---grafana-overview.json
+|   |   |---kubernetes-api-server.json
+|   |   |---kubernetes-compute-resources-cluster.json
+|   |   |---kubernetes-compute-resources-multi-cluster.json
+|   |   |---kubernetes-compute-resources-node-pods.json
+|   |   |---kubernetes-kubelet.json
+|   |   |---kubernetes-networking-cluster.json
+|   |   |---kubernetes-networking-namespace-pods.json
+|   |   |---kubernetes-networking-namespace-workload.json
+|   |   |---kubernetes-networking-pod.json
+|   |   |---kubernetes-networking-workload.json
+|   |   |---kubernetes-persistent-volumes.json
+|   |   |---node-exporter-AIX.json
+|   |   |---node-exporter-nodes.json
+|   |   |---node-exporter-use-method-cluster.json
+|   |   |---node-exporter-use-method-node.json
+|   |   |---prometheus-overview.json
+|   |
+|   |---metallb/
+|   |   |---ipaddresspool.yaml
+|   |   |---l2advertisement.yaml
+|   |
+|   |---observability/
+|   |   |---monitoring-values.yaml
+|   |   |---loki-values.yaml
+|   |   |---loki-datasource.yaml
+|   |
+|   |---python-app/
+|       |---deployment.yaml
+|       |---service.yaml
+|       |---servicemonitor.yaml
+|       |---prometheusrule.yaml
+|       |---alertmanagerconfig.yaml
+|
+|---app/
+|   |---src/
+|   |   |---main.py
+|   |
+|   |---Dockerfile
+|   |---requirements.txt
+|
+|---docs/
+    |---architecture-diagram.png</pre>
+</body>
+</html>
