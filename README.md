@@ -172,3 +172,32 @@ The master playbook deploys everything in order:
 ```bash
 ansible-playbook playbooks/site.yaml --ask-become-pass
 ```
+
+To run only specific parts, use tags:
+```bash
+# Only prepare nodes
+ansible-playbook playbooks/site.yaml --tags prepare --ask-become-pass
+
+# Only deploy the observability stack
+ansible-playbook playbooks/site.yaml --tags observability
+
+# Skip ArgoCD and app
+ansible-playbook playbooks/site.yaml --skip-tags app
+```
+
+### 5. Access Services
+
+After deployment, add the following entries to your local /etc/hosts (replace 192.168.1.15 with your Traefik LoadBalancer IP – typically the first MetalLB IP):
+
+```text
+192.168.1.15 grafana.lan prometheus.lan alertmanager.lan argocd.lan app.lan
+```
+
+- Grafana: http://grafana.lan (admin / prom-operator)
+- Prometheus: http://prometheus.lan
+- Alertmanager: http://alertmanager.lan
+- ArgoCD: http://argocd.lan (user: admin, password: retrieved from secret - see deployment output or run command below)
+  ```bash
+  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+  ```
+- Sample App: http://app.lan (endpoints: /health, /hello?name=Ken, /metrics)
