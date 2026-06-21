@@ -136,6 +136,6 @@ observability-n-monitoring/
 |   |---requirements.txt
 |
 |---docs/
-    |---architecture-diagram.png</pre>
+|   |---architecture-diagram.png</pre>
 </body>
 </html>
