@@ -197,7 +197,43 @@ After deployment, add the following entries to your local /etc/hosts (replace 19
 - Prometheus: http://prometheus.lan
 - Alertmanager: http://alertmanager.lan
 - ArgoCD: http://argocd.lan (user: admin, password: retrieved from secret - see deployment output or run command below)
-  ```bash
-  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-  ```
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
 - Sample App: http://app.lan (endpoints: /health, /hello?name=Ken, /metrics)
+
+---
+## Configuration & Customization
+
+### Observability Stack
+
+- Edit **kubernetes/observability/monitoring-values.yaml** to change Grafana admin password, retention, etc.
+- Edit **kubernetes/observability/loki-values.yaml** to adjust Loki persistence size or storage class.
+- Additional Grafana dashboards can be added by placing JSON files in **kubernetes/dashboards/** – they will be imported automatically on the next run of **06_deploy_observability.yaml**.
+
+---
+## Python Application
+
+- The app is deployed via ArgoCD from the **kubernetes/python-app/** path.
+- To use your own Docker image, update the **image:** field in **deployment.yaml** and push to your registry.
+- Replace the webhook URL in **alertmanagerconfig.yaml** with a real endpoint (e.g., from [webhook.site](https://webhook.site/)).
+- Metrics and alerting rules are defined in **servicemonitor.yaml** and **prometheusrule.yaml**.
+
+---
+## MetalLB IP Pool
+
+- Modify **metallb_ip_pool** in **group_vars/all.yaml** or directly edit the **ipaddresspool.yaml** file if you deploy manually.
+
+---
+## GitOps Workflow
+
+Once the cluster is running, ArgoCD will automatically synchronise any changes pushed to the **kubernetes/python-app/** directory in the **main** branch. You can also manage the observability stack through ArgoCD by adding applications for the **kubernetes/observability/** path.
+
+---
+## Troubleshooting
+
+- Playbook fails on **kubectl** commands: Ensure you have run **03_fetch_kubeconfig.yml** and that **~/.kube/config** is correctly set up.
+- Loki pods stuck in **ContainerCreating**: Verify the **local-path** StorageClass is available (it is the default in K3s). Check disk space.
+- ArgoCD UI not loading: Confirm the MetalLB IP is assigned to the Traefik service and that the **argocd.lan** host resolves. Also check that **server.insecure: "true"** is applied (the playbook handles this).
+- No metrics for the Python app: Ensure the **ServiceMonitor** has label **release: monitoring** and that Prometheus is scraping the correct namespace (the **serviceMonitorNamespaceSelector: {}** allows any namespace).
+- Webhook alerts not working: Replace the placeholder URL in **alertmanagerconfig.yaml** and re‑apply.
