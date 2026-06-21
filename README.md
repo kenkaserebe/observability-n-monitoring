@@ -72,7 +72,7 @@ observability-n-monitoring/
 |   |           |---all.yaml
 |   |           |---k3s_server.yaml
 |   |           |---k3s_agent.yaml
-|   |           
+|   |
 |   |---playbooks/
 |   |   |---site.yaml
 |   |   |---00_ping_test.yaml
