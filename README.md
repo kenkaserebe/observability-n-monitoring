@@ -149,14 +149,26 @@ observability-n-monitoring/
 ```bash
 git clone https://github.com/kenkaserebe/observability-n-monitoring.git
 cd observability-n-monitoring/ansible
+```
 
 ### 2. Adjust Inventory
+
 Edit ansible/inventory/production/inventory.yaml and the group_vars/ files to match your environment:
-
 Update ansible_host IPs and ansible_user.
-
 Set k3s_version and metallb_ip_pool as needed.
-
 Ensure the SSH key path is correct.
 
-3. Install Ansible Requirements
+### 3. Install Ansible Requirements
+
+```bash
+pip install kubernetes
+ansible-galaxy collection install kubernetes.core community.general
+```
+
+### 4. Run the Deployment
+
+The master playbook deploys everything in order:
+
+```bash
+ansible-playbook playbooks/site.yaml --ask-become-pass
+```
