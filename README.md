@@ -61,7 +61,7 @@ This repository provides:
 
 <!DOCTYPE html>
 <html>
-<body lang="en-US" link="#000080" vlink="#800000" dir="ltr"><pre class="western"># observability-n-monitoring/folder_structure
+<body lang="en-US" link="#000080" vlink="#800000" dir="ltr"><pre class="western">
 
 observability-n-monitoring/
 |---ansible/
