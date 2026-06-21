@@ -24,7 +24,6 @@ observability-n-monitoring/
 |
 |---kubernetes/
 |   |---argocd/
-|   |   |---argocd-insecure-configmap.yaml
 |   |   |---argocd-app.yaml
 |   |
 |   |---dashboards/
