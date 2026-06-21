@@ -222,7 +222,7 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 ---
 ## MetalLB IP Pool
 
-- Modify **metallb_ip_pool** in **group_vars/all.yaml** or directly edit the **ipaddresspool.yaml** file if you deploy manually.
+Modify **metallb_ip_pool** in **group_vars/all.yaml** or directly edit the **ipaddresspool.yaml** file if you deploy manually.
 
 ---
 ## GitOps Workflow
