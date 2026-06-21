@@ -59,6 +59,10 @@ This repository provides:
 
 ## File Structure 
 
+<!DOCTYPE html>
+<html>
+<body lang="en-US" link="#000080" vlink="#800000" dir="ltr"><pre class="western"># observability-n-monitoring/folder_structure
+
 observability-n-monitoring/
 |---ansible/
 |   |---inventory/
@@ -77,7 +81,7 @@ observability-n-monitoring/
 |   |   |---03_install_k3s_agent.yaml
 |   |   |---04_install_metallb.yaml
 |   |   |---05_deploy_observability.yaml
-|   |   |---06_deploy_argocd_&_configure_python_app_gitops.yaml
+|   |   |---06_deploy_argocd_&amp;_configure_python_app_gitops.yaml
 |   |
 |   |---ansible.cfg
 |
@@ -132,4 +136,6 @@ observability-n-monitoring/
 |   |---requirements.txt
 |
 |---docs/
-    |---architecture-diagram.png
+    |---architecture-diagram.png</pre>
+</body>
+</html>
