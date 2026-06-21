@@ -1,6 +1,5 @@
 # observability-n-monitoring
 
-# observability-n-monitoring
 
 A complete, GitOps‑driven **K3s cluster** with a full **observability stack** (Prometheus, Grafana, Loki, Alertmanager) and a sample Python application, all deployed and managed through **Ansible** and **ArgoCD**.
 
@@ -17,6 +16,7 @@ This repository provides:
 - The Python app exposes Prometheus metrics and demonstrates structured JSON logging.
 
 ---
+
 ![Docker](https://img.shields.io/badge/docker-blue?logo=docker&logoColor=white)
 ![Kubernetes](https://img.shields.io/badge/kubernetes-blue?logo=kubernetes&logoColor=white)
 ![ArgoCD](https://img.shields.io/badge/argocd-white?logo=argo&logoColor=lightbrown)
@@ -54,4 +54,4 @@ This repository provides:
   - Laptops require `gsettings` if you want to disable GNOME sleep (the playbook ignores errors otherwise).
 - The `architecture-diagram.png` is not required for deployment.
 
-## File Structure
+![File Structure](folder_structure)
